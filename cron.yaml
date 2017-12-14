@@ -1,0 +1,4 @@
+cron:
+- description: "run backup daily"
+  url: /snapshot
+  schedule: every 1 days
