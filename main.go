@@ -1,24 +1,41 @@
-package snapshot
+package main
 
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"context"
 	"log"
 
-	"golang.org/x/oauth2/google"
 	compute "google.golang.org/api/compute/v1"
-	"google.golang.org/appengine"
 )
 
-func init() {
+func main() {
 	http.HandleFunc("/", handler)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+		log.Printf("Defaulting to port %s", port)
+	}
+
+	log.Printf("Listening on port %s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
+
+	// See https://stackoverflow.com/questions/46659607/how-to-allow-only-internal-cron-requests-in-my-app-engine/46662128
+	if r.Header.Get("X-Appengine-Cron") != "true" {
+		log.Println("Rejecting request since it does not originate from cron")
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 
 	// Taking disk name from URL would be a bit more sophisticated
 	diskName := "mtb-lohja-forum-data"
@@ -31,16 +48,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(w, selfLink)
+	fmt.Fprint(w, selfLink)
 }
 
 func snapshot(ctx context.Context, disk string) (string, error) {
-	client, err := google.DefaultClient(ctx, compute.ComputeScope)
-	if err != nil {
-		return "", err
-	}
-
-	computeService, err := compute.New(client)
+	computeService, err := compute.NewService(ctx)
 	if err != nil {
 		return "", err
 	}
